@@ -1,4 +1,4 @@
-const Url = require("../models/Url");
+const Url = require("../models/url");
 const generateCode = require("../utils/generateCode");
 
 const BASE_URL = process.env.BASE_URL;
