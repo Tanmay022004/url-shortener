@@ -43,7 +43,9 @@
       const data = await res.json();
 
       document.getElementById("result").innerHTML =
-        `<a href="${data.shortUrl}" target="_blank">${data.shortUrl}</a>`;
+      `<a href="${data.shortUrl}" target="_blank">${data.shortUrl}</a>
+       <br/>
+       ${data.qrCode ? `<img src="${data.qrCode}" width="200"/>` : ""}`;
     }
   </script>
 </body>

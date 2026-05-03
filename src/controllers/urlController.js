@@ -1,5 +1,6 @@
 const Url = require("../models/url");
 const generateCode = require("../utils/generateCode");
+const QRCode = require("qrcode");
 
 const BASE_URL = process.env.BASE_URL;
 
@@ -18,12 +19,13 @@ exports.createShortUrl = async (req, res) => {
       return res.status(400).json({ error: "Invalid URL" });
     }
 
-    // Check duplicate
+    // Check duplicate URL
     const existing = await Url.findOne({ originalUrl }).lean();
     if (existing) {
-      return res.json({
-        shortUrl: `${BASE_URL}/${existing.shortCode}`
-      });
+      const shortUrl = `${BASE_URL}/${existing.shortCode}`;
+      const qrCode = await QRCode.toDataURL(shortUrl);
+
+      return res.json({ shortUrl, qrCode });
     }
 
     let shortCode = customCode;
@@ -42,10 +44,9 @@ exports.createShortUrl = async (req, res) => {
       }
     }
 
-    // Expiry
-    const expiresInDays = 7;
+    // Expiry (7 days)
     const expiresAt = new Date(
-      Date.now() + expiresInDays * 24 * 60 * 60 * 1000
+      Date.now() + 7 * 24 * 60 * 60 * 1000
     );
 
     await Url.create({
@@ -54,15 +55,19 @@ exports.createShortUrl = async (req, res) => {
       expiresAt
     });
 
-    // store in cache
+    const shortUrl = `${BASE_URL}/${shortCode}`;
+    const qrCode = await QRCode.toDataURL(shortUrl);
+
+    // cache it
     cache[shortCode] = originalUrl;
 
-    res.json({
-      shortUrl: `${BASE_URL}/${shortCode}`
+    return res.json({
+      shortUrl,
+      qrCode
     });
 
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -71,7 +76,7 @@ exports.redirectUrl = async (req, res) => {
   try {
     const { code } = req.params;
 
-    // 🚀 1. Check cache first (FAST)
+    // 1. Cache check
     if (cache[code]) {
       Url.updateOne(
         { shortCode: code },
@@ -81,32 +86,32 @@ exports.redirectUrl = async (req, res) => {
       return res.redirect(cache[code]);
     }
 
-    // 🚀 2. Fetch from DB (use lean for speed)
+    // 2. DB fetch
     const url = await Url.findOne({ shortCode: code }).lean();
 
     if (!url) {
       return res.status(404).json({ error: "Not found" });
     }
 
-    // Expiry check
+    // 3. Expiry check
     if (url.expiresAt && url.expiresAt < new Date()) {
       return res.status(410).json({ error: "Link expired" });
     }
 
-    // store in cache
+    // 4. cache store
     cache[code] = url.originalUrl;
 
-    // 🚀 3. Non-blocking update (NO await)
+    // 5. async click tracking
     Url.updateOne(
       { shortCode: code },
       { $inc: { clicks: 1 } }
     ).catch(() => {});
 
-    // 🚀 4. Redirect immediately
+    // 6. redirect
     return res.redirect(url.originalUrl);
 
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -121,7 +126,7 @@ exports.getAnalytics = async (req, res) => {
       return res.status(404).json({ error: "Not found" });
     }
 
-    res.json({
+    return res.json({
       originalUrl: url.originalUrl,
       clicks: url.clicks,
       createdAt: url.createdAt,
@@ -129,6 +134,6 @@ exports.getAnalytics = async (req, res) => {
     });
 
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
