@@ -8,6 +8,8 @@ const app = express();
 // Connect DB first (important for production stability)
 connectDB();
 
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(express.json());
 
